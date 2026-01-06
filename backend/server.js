@@ -2,14 +2,41 @@ const express = require("express");
 const cors = require("cors");
 const ExcelJS = require("exceljs");
 const { v4: uuidv4 } = require("uuid");
+const path = require("path");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-const path = require("path");
 
-app.use(express.static(path.join(__dirname, "../frontend")));
+/* --------------------------------------------------
+   FRONTEND STATIC SERVING (RAILWAY SAFE)
+-------------------------------------------------- */
 
+const frontendPath = path.join(__dirname, "..", "frontend");
+
+// Serve static assets (css, js, images, html)
+app.use(express.static(frontendPath));
+
+// Explicit routes for HTML files (IMPORTANT for Railway)
+app.get("/", (req, res) => {
+  res.redirect("/admin.html");
+});
+
+app.get("/admin.html", (req, res) => {
+  res.sendFile(path.join(frontendPath, "admin.html"));
+});
+
+app.get("/scanner.html", (req, res) => {
+  res.sendFile(path.join(frontendPath, "scanner.html"));
+});
+
+app.get("/report.html", (req, res) => {
+  res.sendFile(path.join(frontendPath, "report.html"));
+});
+
+/* --------------------------------------------------
+   REGISTER EMPLOYEE
+-------------------------------------------------- */
 
 app.post("/register-employee", async (req, res) => {
   const { empId, name, dept } = req.body;
@@ -19,7 +46,6 @@ app.post("/register-employee", async (req, res) => {
   }
 
   const secret = uuidv4();
-
   const workbook = new ExcelJS.Workbook();
 
   try {
@@ -30,7 +56,7 @@ app.post("/register-employee", async (req, res) => {
   }
 
   const sheet = workbook.getWorksheet("Employees");
-  sheet.addRow([empId, name, dept, secret]);
+  sheet.addRow([empId, name, dept || "", secret]);
 
   await workbook.xlsx.writeFile("employees.xlsx");
 
@@ -39,15 +65,18 @@ app.post("/register-employee", async (req, res) => {
   });
 });
 
+/* --------------------------------------------------
+   MARK ATTENDANCE (DUPLICATE SAFE)
+-------------------------------------------------- */
 
 app.post("/mark-attendance", async (req, res) => {
   const { empId, secret } = req.body;
 
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile("employees.xlsx");
-  const empSheet = workbook.getWorksheet("Employees");
+  const empWorkbook = new ExcelJS.Workbook();
+  await empWorkbook.xlsx.readFile("employees.xlsx");
+  const empSheet = empWorkbook.getWorksheet("Employees");
 
-  const rows = empSheet.getRows(2, empSheet.rowCount - 1);
+  const rows = empSheet.getRows(2, empSheet.rowCount - 1) || [];
   const employee = rows.find(
     r => r.getCell(1).value === empId && r.getCell(4).value === secret
   );
@@ -71,16 +100,15 @@ app.post("/mark-attendance", async (req, res) => {
 
   const sheet = attWorkbook.getWorksheet("Attendance");
 
-  // DUPLICATE CHECK
+  // Duplicate check
   let alreadyMarked = false;
-
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
 
-    const existingEmpId = row.getCell(1).value;
-    const existingDate = row.getCell(2).value;
-
-    if (existingEmpId === empId && existingDate === date) {
+    if (
+      row.getCell(1).value === empId &&
+      row.getCell(2).value === date
+    ) {
       alreadyMarked = true;
     }
   });
@@ -91,13 +119,15 @@ app.post("/mark-attendance", async (req, res) => {
     });
   }
 
-  // MARK ATTENDANCE
   sheet.addRow([empId, date, time]);
   await attWorkbook.xlsx.writeFile("attendance.xlsx");
 
   res.json({ message: "Attendance marked" });
 });
 
+/* --------------------------------------------------
+   DOWNLOAD ATTENDANCE REPORT
+-------------------------------------------------- */
 
 app.get("/download-attendance", async (req, res) => {
   const { date } = req.query;
@@ -106,7 +136,6 @@ app.get("/download-attendance", async (req, res) => {
     return res.status(400).send("Date is required");
   }
 
-  const ExcelJS = require("exceljs");
   const workbook = new ExcelJS.Workbook();
 
   try {
@@ -123,14 +152,11 @@ app.get("/download-attendance", async (req, res) => {
   const newWorkbook = new ExcelJS.Workbook();
   const newSheet = newWorkbook.addWorksheet("Attendance");
 
-  // Header
   newSheet.addRow(["empId", "date", "time"]);
 
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
-
-    const rowDate = row.getCell(2).value;
-    if (rowDate === date) {
+    if (row.getCell(2).value === date) {
       newSheet.addRow([
         row.getCell(1).value,
         row.getCell(2).value,
@@ -153,6 +179,9 @@ app.get("/download-attendance", async (req, res) => {
   res.end();
 });
 
+/* --------------------------------------------------
+   START SERVER
+-------------------------------------------------- */
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

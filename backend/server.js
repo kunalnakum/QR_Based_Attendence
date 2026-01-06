@@ -8,29 +8,41 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* ===============================
-   FRONTEND STATIC FILE SERVING
-   =============================== */
+/* =====================================================
+   FRONTEND – EXPLICIT ROUTES (RAILWAY SAFE)
+   ===================================================== */
 
 const frontendPath = path.join(__dirname, "frontend");
 
-// Serve static frontend files
-app.use(express.static(frontendPath));
+// serve JS files explicitly
+app.use("/js", express.static(path.join(frontendPath, "js")));
 
-// Redirect root to admin page
+// root → admin
 app.get("/", (req, res) => {
-  res.redirect("/admin.html");
+  res.sendFile(path.join(frontendPath, "admin.html"));
 });
 
-/* ===============================
+app.get("/admin.html", (req, res) => {
+  res.sendFile(path.join(frontendPath, "admin.html"));
+});
+
+app.get("/scanner.html", (req, res) => {
+  res.sendFile(path.join(frontendPath, "scanner.html"));
+});
+
+app.get("/report.html", (req, res) => {
+  res.sendFile(path.join(frontendPath, "report.html"));
+});
+
+/* =====================================================
    REGISTER EMPLOYEE
-   =============================== */
+   ===================================================== */
 
 app.post("/register-employee", async (req, res) => {
   const { empId, name, dept } = req.body;
 
   if (!empId || !name) {
-    return res.status(400).json({ message: "Invalid data" });
+    return res.status(400).json({ message: "Employee ID and Name required" });
   }
 
   const secret = uuidv4();
@@ -53,9 +65,9 @@ app.post("/register-employee", async (req, res) => {
   });
 });
 
-/* ===============================
-   MARK ATTENDANCE (NO DUPLICATE)
-   =============================== */
+/* =====================================================
+   MARK ATTENDANCE (NO DUPLICATE SAME DAY)
+   ===================================================== */
 
 app.post("/mark-attendance", async (req, res) => {
   const { empId, secret } = req.body;
@@ -88,7 +100,6 @@ app.post("/mark-attendance", async (req, res) => {
 
   const sheet = attWorkbook.getWorksheet("Attendance");
 
-  // Prevent duplicate attendance for same day
   let alreadyMarked = false;
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
@@ -109,9 +120,9 @@ app.post("/mark-attendance", async (req, res) => {
   res.json({ message: "Attendance marked" });
 });
 
-/* ===============================
+/* =====================================================
    DOWNLOAD ATTENDANCE REPORT
-   =============================== */
+   ===================================================== */
 
 app.get("/download-attendance", async (req, res) => {
   const { date } = req.query;
@@ -129,9 +140,6 @@ app.get("/download-attendance", async (req, res) => {
   }
 
   const sheet = workbook.getWorksheet("Attendance");
-  if (!sheet) {
-    return res.status(404).send("Attendance sheet not found");
-  }
 
   const newWorkbook = new ExcelJS.Workbook();
   const newSheet = newWorkbook.addWorksheet("Attendance");
@@ -153,7 +161,6 @@ app.get("/download-attendance", async (req, res) => {
     "Content-Type",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
-
   res.setHeader(
     "Content-Disposition",
     `attachment; filename=attendance-${date}.xlsx`
@@ -163,9 +170,9 @@ app.get("/download-attendance", async (req, res) => {
   res.end();
 });
 
-/* ===============================
+/* =====================================================
    START SERVER
-   =============================== */
+   ===================================================== */
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

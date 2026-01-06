@@ -8,35 +8,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* --------------------------------------------------
-   FRONTEND STATIC SERVING (RAILWAY SAFE)
--------------------------------------------------- */
+/* ===============================
+   FRONTEND STATIC FILE SERVING
+   =============================== */
 
-const frontendPath = path.join(__dirname, "..", "frontend");
+const frontendPath = path.join(__dirname, "frontend");
 
-// Serve static assets (css, js, images, html)
+// Serve static frontend files
 app.use(express.static(frontendPath));
 
-// Explicit routes for HTML files (IMPORTANT for Railway)
+// Redirect root to admin page
 app.get("/", (req, res) => {
   res.redirect("/admin.html");
 });
 
-app.get("/admin.html", (req, res) => {
-  res.sendFile(path.join(frontendPath, "admin.html"));
-});
-
-app.get("/scanner.html", (req, res) => {
-  res.sendFile(path.join(frontendPath, "scanner.html"));
-});
-
-app.get("/report.html", (req, res) => {
-  res.sendFile(path.join(frontendPath, "report.html"));
-});
-
-/* --------------------------------------------------
+/* ===============================
    REGISTER EMPLOYEE
--------------------------------------------------- */
+   =============================== */
 
 app.post("/register-employee", async (req, res) => {
   const { empId, name, dept } = req.body;
@@ -65,9 +53,9 @@ app.post("/register-employee", async (req, res) => {
   });
 });
 
-/* --------------------------------------------------
-   MARK ATTENDANCE (DUPLICATE SAFE)
--------------------------------------------------- */
+/* ===============================
+   MARK ATTENDANCE (NO DUPLICATE)
+   =============================== */
 
 app.post("/mark-attendance", async (req, res) => {
   const { empId, secret } = req.body;
@@ -100,15 +88,11 @@ app.post("/mark-attendance", async (req, res) => {
 
   const sheet = attWorkbook.getWorksheet("Attendance");
 
-  // Duplicate check
+  // Prevent duplicate attendance for same day
   let alreadyMarked = false;
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
-
-    if (
-      row.getCell(1).value === empId &&
-      row.getCell(2).value === date
-    ) {
+    if (row.getCell(1).value === empId && row.getCell(2).value === date) {
       alreadyMarked = true;
     }
   });
@@ -125,9 +109,9 @@ app.post("/mark-attendance", async (req, res) => {
   res.json({ message: "Attendance marked" });
 });
 
-/* --------------------------------------------------
+/* ===============================
    DOWNLOAD ATTENDANCE REPORT
--------------------------------------------------- */
+   =============================== */
 
 app.get("/download-attendance", async (req, res) => {
   const { date } = req.query;
@@ -179,9 +163,9 @@ app.get("/download-attendance", async (req, res) => {
   res.end();
 });
 
-/* --------------------------------------------------
+/* ===============================
    START SERVER
--------------------------------------------------- */
+   =============================== */
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

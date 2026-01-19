@@ -15,7 +15,7 @@ async function generateQR() {
     return;
   }
 
-  const response = await fetch("http://localhost:3000/register-employee", {
+  const response = await fetch(`${window.location.origin}/register-employee`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ empId, name, dept })

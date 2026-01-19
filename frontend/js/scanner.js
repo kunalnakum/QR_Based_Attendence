@@ -16,7 +16,7 @@ function onScanSuccess(decodedText) {
 }
 
 async function markAttendance(empId, secret) {
-  const response = await fetch("http://localhost:3000/mark-attendance", {
+  const response = await fetch(`${window.location.origin}/mark-attendance`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ empId, secret })

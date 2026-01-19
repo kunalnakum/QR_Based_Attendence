@@ -1,23 +1,28 @@
+require("dotenv").config();
+require("./db");
+
 const express = require("express");
 const cors = require("cors");
-const ExcelJS = require("exceljs");
 const { v4: uuidv4 } = require("uuid");
 const path = require("path");
+
+const Employee = require("./models/Employee");
+const Attendance = require("./models/Attendance");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+const ExcelJS = require("exceljs");
+
 
 /* =====================================================
-   FRONTEND – EXPLICIT ROUTES (RAILWAY SAFE)
+   FRONTEND ROUTES
    ===================================================== */
 
 const frontendPath = path.join(__dirname, "frontend");
 
-// serve JS files explicitly
 app.use("/js", express.static(path.join(frontendPath, "js")));
 
-// root → admin
 app.get("/", (req, res) => {
   res.sendFile(path.join(frontendPath, "admin.html"));
 });
@@ -39,136 +44,116 @@ app.get("/report.html", (req, res) => {
    ===================================================== */
 
 app.post("/register-employee", async (req, res) => {
-  const { empId, name, dept } = req.body;
-
-  if (!empId || !name) {
-    return res.status(400).json({ message: "Employee ID and Name required" });
-  }
-
-  const secret = uuidv4();
-  const workbook = new ExcelJS.Workbook();
-
   try {
-    await workbook.xlsx.readFile("employees.xlsx");
-  } catch {
-    const sheet = workbook.addWorksheet("Employees");
-    sheet.addRow(["empId", "name", "dept", "secret"]);
+    const { empId, name, dept } = req.body;
+
+    if (!empId || !name) {
+      return res.status(400).json({ message: "Employee ID and Name required" });
+    }
+
+    const secret = uuidv4();
+
+    await Employee.create({ empId, name, dept, secret });
+
+    res.json({
+      qrData: JSON.stringify({ empId, secret })
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({ message: "Employee already exists" });
+    }
+    res.status(500).json({ message: "Server error" });
   }
-
-  const sheet = workbook.getWorksheet("Employees");
-  sheet.addRow([empId, name, dept || "", secret]);
-
-  await workbook.xlsx.writeFile("employees.xlsx");
-
-  res.json({
-    qrData: JSON.stringify({ empId, secret })
-  });
 });
 
 /* =====================================================
-   MARK ATTENDANCE (NO DUPLICATE SAME DAY)
+   MARK ATTENDANCE
    ===================================================== */
 
 app.post("/mark-attendance", async (req, res) => {
-  const { empId, secret } = req.body;
-
-  const empWorkbook = new ExcelJS.Workbook();
-  await empWorkbook.xlsx.readFile("employees.xlsx");
-  const empSheet = empWorkbook.getWorksheet("Employees");
-
-  const rows = empSheet.getRows(2, empSheet.rowCount - 1) || [];
-  const employee = rows.find(
-    r => r.getCell(1).value === empId && r.getCell(4).value === secret
-  );
-
-  if (!employee) {
-    return res.status(401).json({ message: "Invalid QR" });
-  }
-
-  const now = new Date();
-  const date = now.toISOString().split("T")[0];
-  const time = now.toLocaleTimeString();
-
-  const attWorkbook = new ExcelJS.Workbook();
-
   try {
-    await attWorkbook.xlsx.readFile("attendance.xlsx");
-  } catch {
-    const sheet = attWorkbook.addWorksheet("Attendance");
-    sheet.addRow(["empId", "date", "time"]);
-  }
+    const { empId, secret } = req.body;
 
-  const sheet = attWorkbook.getWorksheet("Attendance");
-
-  let alreadyMarked = false;
-  sheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
-    if (row.getCell(1).value === empId && row.getCell(2).value === date) {
-      alreadyMarked = true;
+    const employee = await Employee.findOne({ empId, secret });
+    if (!employee) {
+      return res.status(401).json({ message: "Invalid QR" });
     }
-  });
 
-  if (alreadyMarked) {
-    return res.status(409).json({
-      message: "Attendance already marked for today"
-    });
+    const now = new Date();
+    const date = now.toISOString().split("T")[0];
+    const time = now.toLocaleTimeString();
+
+    await Attendance.create({ empId, date, time });
+
+    res.json({ message: "Attendance marked" });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({ message: "Attendance already marked for today" });
+    }
+    res.status(500).json({ message: "Server error" });
   }
+});
 
-  sheet.addRow([empId, date, time]);
-  await attWorkbook.xlsx.writeFile("attendance.xlsx");
+app.get("/attendance-report", async (req, res) => {
+  try {
+    const { date } = req.query;
 
-  res.json({ message: "Attendance marked" });
+    if (!date) {
+      return res.status(400).json({ message: "Date is required" });
+    }
+
+    const records = await Attendance.find({ date }).sort({ empId: 1 });
+
+    res.json(records);
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 /* =====================================================
-   DOWNLOAD ATTENDANCE REPORT
+   DOWNLOAD ATTENDANCE REPORT (EXCEL)
    ===================================================== */
 
 app.get("/download-attendance", async (req, res) => {
-  const { date } = req.query;
-
-  if (!date) {
-    return res.status(400).send("Date is required");
-  }
-
-  const workbook = new ExcelJS.Workbook();
-
   try {
-    await workbook.xlsx.readFile("attendance.xlsx");
-  } catch {
-    return res.status(404).send("Attendance file not found");
-  }
+    const { date } = req.query;
 
-  const sheet = workbook.getWorksheet("Attendance");
-
-  const newWorkbook = new ExcelJS.Workbook();
-  const newSheet = newWorkbook.addWorksheet("Attendance");
-
-  newSheet.addRow(["empId", "date", "time"]);
-
-  sheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
-    if (row.getCell(2).value === date) {
-      newSheet.addRow([
-        row.getCell(1).value,
-        row.getCell(2).value,
-        row.getCell(3).value
-      ]);
+    if (!date) {
+      return res.status(400).send("Date is required");
     }
-  });
 
-  res.setHeader(
-    "Content-Type",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  );
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename=attendance-${date}.xlsx`
-  );
+    const records = await Attendance.find({ date });
 
-  await newWorkbook.xlsx.write(res);
-  res.end();
+    if (records.length === 0) {
+      return res.status(404).send("No attendance found for this date");
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Attendance");
+
+    sheet.addRow(["Employee ID", "Date", "Time"]);
+
+    records.forEach(r => {
+      sheet.addRow([r.empId, r.date, r.time]);
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=attendance-${date}.xlsx`
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("Download error:", err);
+    res.status(500).send("Server error");
+  }
 });
+
 
 /* =====================================================
    START SERVER

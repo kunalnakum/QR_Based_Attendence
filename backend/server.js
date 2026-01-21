@@ -159,8 +159,7 @@ app.get("/download-attendance", async (req, res) => {
    START SERVER
    ===================================================== */
 
-const PORT = process.env.PORT;
-app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+app.listen(process.env.PORT, "0.0.0.0", () => {
+  console.log("Server running on port " + process.env.PORT);
 });
 

@@ -15,28 +15,42 @@ app.use(express.json());
 const ExcelJS = require("exceljs");
 
 
+// /* =====================================================
+//    FRONTEND ROUTES
+//    ===================================================== */
+
+// const frontendPath = path.join(__dirname, "frontend");
+
+// app.use("/js", express.static(path.join(frontendPath, "js")));
+
+// app.get("/", (req, res) => {
+//   res.sendFile(path.join(frontendPath, "admin.html"));
+// });
+
+// app.get("/admin.html", (req, res) => {
+//   res.sendFile(path.join(frontendPath, "admin.html"));
+// });
+
+// app.get("/scanner.html", (req, res) => {
+//   res.sendFile(path.join(frontendPath, "scanner.html"));
+// });
+
+// app.get("/report.html", (req, res) => {
+//   res.sendFile(path.join(frontendPath, "report.html"));
+// });
+
 /* =====================================================
-   FRONTEND ROUTES
+   FRONTEND (STATIC FILES – RAILWAY SAFE)
    ===================================================== */
 
-const frontendPath = path.join(__dirname, "frontend");
+const frontendPath = path.resolve(__dirname, "frontend");
 
-app.use("/js", express.static(path.join(frontendPath, "js")));
+// Serve everything inside /frontend automatically
+app.use(express.static(frontendPath));
 
+// Default page
 app.get("/", (req, res) => {
   res.sendFile(path.join(frontendPath, "admin.html"));
-});
-
-app.get("/admin.html", (req, res) => {
-  res.sendFile(path.join(frontendPath, "admin.html"));
-});
-
-app.get("/scanner.html", (req, res) => {
-  res.sendFile(path.join(frontendPath, "scanner.html"));
-});
-
-app.get("/report.html", (req, res) => {
-  res.sendFile(path.join(frontendPath, "report.html"));
 });
 
 /* =====================================================
